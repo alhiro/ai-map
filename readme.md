@@ -3,7 +3,7 @@
 This project allows users to search nearby places (food, cafes, attractions, etc.) using a natural language prompt by GROQ AI.  
 The backend converts the prompt into a Google Maps query, fetches results from the Google Places API, and displays them directly on an interactive map.
 
-<img src="./screenshots/demo.png" width="700"/>
+<img src="./screenshoots/demo.png" width="700"/>
 
 ### Key Features
 
