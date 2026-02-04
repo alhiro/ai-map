@@ -1,0 +1,174 @@
+<header>
+    <h1>AI Maps Search</h1>
+    <p>Find best places to go/eat/etc.</p>
+  </header>
+  
+  <div class="container">
+  
+    <!-- LEFT PANEL -->
+    <div class="card">
+      <h2>Search Places</h2>
+  
+      <p class="loading" id="statusText">Detecting your location...</p>
+  
+      <form id="searchForm">
+        <!-- Prompt -->
+        <input type="text" name="prompt" placeholder="Search place..." required>
+  
+        <!-- Lat -->
+        <input type="number" step="any" name="lat" id="latInput" placeholder="Latitude">
+  
+        <!-- Lng -->
+        <input type="number" step="any" name="lng" id="lngInput" placeholder="Longitude">
+  
+        <button type="submit">Search</button>
+      </form>
+  
+      <div id="results"></div>
+    </div>
+  
+    <!-- RIGHT PANEL -->
+    <div class="card">
+      <h2>Map View</h2>
+      <div id="map"></div>
+    </div>
+  
+  </div>
+  
+  <!-- Google Maps JS -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=<%= process.env.GOOGLE_SERVER_KEY %>"></script>
+  
+  <script>
+    const form = document.getElementById("searchForm");
+    const resultsDiv = document.getElementById("results");
+    const statusText = document.getElementById("statusText");
+  
+    const latInput = document.getElementById("latInput");
+    const lngInput = document.getElementById("lngInput");
+  
+    let map;
+    let markers = [];
+  
+    // Default fallback (Jakarta)
+    let defaultLat = -6.200000;
+    let defaultLng = 106.816666;
+  
+    // Init map
+    function initMap(lat, lng) {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat, lng },
+        zoom: 14
+      });
+  
+      // marker user location
+      new google.maps.Marker({
+        position: { lat, lng },
+        map,
+        title: "Your Location"
+      });
+    }
+  
+    // Auto detect location and fill inputs
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const userLat = pos.coords.latitude;
+          const userLng = pos.coords.longitude;
+  
+          latInput.value = userLat;
+          lngInput.value = userLng;
+  
+          statusText.innerText =
+            `📍 Location detected: ${userLat.toFixed(4)}, ${userLng.toFixed(4)}`;
+  
+          initMap(userLat, userLng);
+        },
+        () => {
+          statusText.innerText =
+            "⚠️ Location permission denied, using Jakarta default.";
+  
+          latInput.value = defaultLat;
+          lngInput.value = defaultLng;
+  
+          initMap(defaultLat, defaultLng);
+        }
+      );
+    } else {
+      statusText.innerText = "⚠️ Geolocation not supported.";
+  
+      latInput.value = defaultLat;
+      lngInput.value = defaultLng;
+  
+      initMap(defaultLat, defaultLng);
+    }
+  
+    // Submit search
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+  
+      const prompt = form.prompt.value;
+  
+      // Always read from input (user can edit)
+      const lat = parseFloat(latInput.value);
+      const lng = parseFloat(lngInput.value);
+  
+      const response = await fetch("/api/maps/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, lat, lng })
+      });
+  
+      const data = await response.json();
+  
+      // Clear old markers
+      markers.forEach(m => m.setMap(null));
+      markers = [];
+  
+      // Center map to first result
+      if (data.allResults.length > 0) {
+        map.setCenter(data.allResults[0].geometry.location);
+      }
+  
+      // Add markers
+      data.allResults.forEach(place => {
+        if (!place.geometry) return;
+  
+        const marker = new google.maps.Marker({
+          position: place.geometry.location,
+          map,
+          title: place.name
+        });
+  
+        markers.push(marker);
+  
+        const infoWindow = new google.maps.InfoWindow({
+          content: `
+            <strong>${place.name}</strong><br>
+            ${place.formatted_address}<br>
+            Rating: ${place.rating || "-"}<br>
+            <a target="_blank"
+              href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}">
+              Open in Google Maps →
+            </a>
+          `
+        });
+  
+        marker.addListener("click", () => {
+          infoWindow.open(map, marker);
+        });
+      });
+  
+      // Show list
+      resultsDiv.innerHTML = data.allResults.map(r => `
+        <div class="result-item">
+          <strong>${r.name}</strong><br>
+          ${r.formatted_address}<br>
+          Rating: ${r.rating || "-"}<br>
+          <a target="_blank"
+            href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.name)}&query_place_id=${r.place_id}">
+            View Direction →
+          </a>
+        </div>
+      `).join("");
+    });
+  </script>
